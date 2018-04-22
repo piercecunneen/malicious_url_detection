@@ -105,6 +105,16 @@ class SparkJob:
 				f.write(url + '\n')
 		with open(tempFile.name, "r") as f:
 			s3Client.upload_fileobj(f, s3_bucket, "urls")
+	def read_urls(self, s3_bucket, s3_path, local=False):
+		if local:
+			with open("/Users/piercecunneen/ML/urls", "r") as f:
+				return f.read().split('\n')[:-1]
+		temp = NamedTemporaryFile(mode='w+b')
+		client = boto3.client('s3')
+		client.download_fileobj(s3_bucket, s3_path, temp)
+		temp.seek(0)
+		with open(temp.name, "r") as f:
+			return f.read().split('\n')[:-1]
 
 if __name__ == "__main__":
 	#parser = argparse.ArgumentParser()
