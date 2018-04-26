@@ -1,12 +1,15 @@
 import argparse
 import boto3
+import decision_tree
+import features
 import gzip
 import json
 from pyspark.sql import SparkSession, SQLContext
 from pyspark import SparkContext, SparkConf
+import random
+import sys
 from tempfile import TemporaryFile, NamedTemporaryFile
 import time
-import random
 from urlparse import  urlparse
 from warcio.archiveiterator import ArchiveIterator
 
@@ -32,10 +35,11 @@ def print_format(obj, prefix):
 class SparkJob:
 	def __init__(self, local = False):
 		self.name = "SparkJob"
-		self.local = local
+		self.is_local = is_local
 		self.input = "s3n://commoncrawl/crawl-data/CC-MAIN-2018-09/wat.paths.gz"
-		self.malicious_url_bucket = "pdc-common-crawl"
-		self.malicious_url_key = "verified_online.json.gz"
+		self.malicious_url_bucket = malicious_url_bucket
+		self.malicious_url_key = malicious_url_key
+		self.benign_urls_key = benign_urls_key
 		self.choose_url_prob = .00074
 	def run(self):
 		start_time = time.time()
@@ -43,7 +47,7 @@ class SparkJob:
 		sc = SparkContext(
 			conf=SparkConf()
 		)
-		malicious_urls = read_malicious_url_data(self.malicious_url_bucket, self.malicious_url_key, self.local)
+		malicious_urls = read_malicious_url_data(self.malicious_url_bucket, self.malicious_url_key, self.is_local)
 		temp1, temp2 = NamedTemporaryFile(mode='w+b'), NamedTemporaryFile()
 		path=self.input.split("s3n://commoncrawl/")[-1]
 		s3Client = boto3.client('s3')
@@ -105,9 +109,9 @@ class SparkJob:
 				f.write(url + '\n')
 		with open(tempFile.name, "r") as f:
 			s3Client.upload_fileobj(f, s3_bucket, "urls")
-	def read_urls(self, s3_bucket, s3_path, local=False):
-		if local:
-			with open("/Users/piercecunneen/ML/urls", "r") as f:
+	def read_benign_urls(self, s3_bucket, s3_path, is_local=False):
+		if is_local:
+			with open("/Users/piercecunneen/urls.txt", "r") as f:
 				return f.read().split('\n')[:-1]
 		temp = NamedTemporaryFile(mode='w+b')
 		client = boto3.client('s3')
@@ -115,13 +119,52 @@ class SparkJob:
 		temp.seek(0)
 		with open(temp.name, "r") as f:
 			return f.read().split('\n')[:-1]
-
+	def read_malicious_urls(self, s3_bucket, s3_path, is_local=False):
+		if is_local:
+			with open("/Users/piercecunneen/ML/malicious_urls.txt", "r") as f:
+				return f.read().split('\n')[:-1]
+		temp = NamedTemporaryFile(mode='w+b')
+		client = boto3.client('s3')
+		client.download_fileobj(s3_bucket, s3_path, temp)
+		temp.seek(0)
+		with open(temp.name, "r") as f:
+			return f.read().split('\n')[:-1]
+	def generate_features(self, urls):
+		feature_list = []
+		for url in urls:
+			feature_list.append(features.create_features(url))
+		return feature_list
+	def train(self):
+		urls = {url:{'class': 0} for url in job.read_benign_urls(self.malicious_url_bucket, self.benign_urls_key, self.is_local)}
+		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls(self.malicious_url_bucket, self.benign_urls_key, self.is_local)}
+		all_urls = urls.copy()
+		all_urls.update(malicious_urls)
+		url_features = job.generate_features(all_urls)
+		for f_set in url_features:
+			url = f_set[1][0]
+			all_urls[url]['features'] = f_set[1][1:]
+		decision_tree.create_tree(all_urls)
 if __name__ == "__main__":
-	#parser = argparse.ArgumentParser()
-	#parser.add_argument('awsAccessKeyID', type=str, help='The aws access key for the user')
-	#parser.add_argument('awsSecretAccessKey', type=str, help='The aws secret key for the user')
+	parser = argparse.ArgumentParser()
+	# parser.add_argument('awsAccessKeyID', type=str, help='The aws access key for the user')
+	# parser.add_argument('awsSecretAccessKey', type=str, help='The aws secret key for the user')
+	parser.add_argument("-awsBucket", action="store", type=str, help="The aws bucket containing the malicious and non malicious urls")
+	parser.add_argument("-awsMaliciousUrlKey", action="store", type=str, help="The aws key for the malicious url file")
+	parser.add_argument("-awsBenignUrlKey", action="store", type=str, help="The aws key for the non malicious url file")
+	parser.add_argument("-local", action="store_true", help="pass -local if script is to be run locally instead of on aws")
+	parser.add_argument("-localMaliciousUrlPath", action="store", type=str, help="pass -local if script is to be run locally instead of on aws")
+	parser.add_argument("-localBenignUrlPath", action="store", type=str, help="pass -local if script is to be run locally instead of on aws")
 
-	job = SparkJob(False)
-	job.run()
+	args = parser.parse_args()
+	if (args.local and not (args.localMaliciousUrlPath and args.localBenignUrlPath)) or \
+		(not args.local and not (args.awsBucket and args.awsMaliciousUrlKey and args.awsBenignUrlKey)):
+		parser.print_help()
+		sys.exit(1)
+	job = SparkJob(args.awsBucket, args.awsMaliciousUrlKey, args.awsBenignUrlKey, True)
+	job.train()
+
+
+
+
 
 

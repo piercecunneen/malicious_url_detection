@@ -9,7 +9,7 @@ non-alphanumeric count in host
 '''
 
 import json
-from urllib.parse import urlparse
+from urlparse import urlparse
 
 def count_case_changes(s):
     changes = 0
@@ -86,7 +86,7 @@ def create_features(url):
             '# of ?s in query',
             '# of -s in query',
             '# of digits in hostname',
-            '# of case changes in path'
+            '# of case changes in path',
             '# of case changes in query',
             '# of non alphanumeric characters'
         ], features
