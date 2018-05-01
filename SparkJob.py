@@ -13,41 +13,31 @@ import time
 from urlparse import  urlparse
 from warcio.archiveiterator import ArchiveIterator
 
-def read_malicious_url_data(s3Bucket, key, is_local):
-	start_t_malicious_url = time.time()
-	if is_local:
-		with gzip.open("/Users/piercecunneen/ML/verified_online.json.gz", "r") as f:
-			return json.loads(f.read())
-	else:
-		temp = NamedTemporaryFile(mode='w+b')
-		client = boto3.client('s3')
-		client.download_fileobj(s3Bucket, key, temp)
-		temp.seek(0)
-		with gzip.open(temp.name, "r") as f:
-			return json.loads(f.read())
-
-def print_format(obj, prefix):
-	for key in obj:
-		print "{}{}:".format(prefix, key)
-		if type(obj[key]) == dict:
-			print_format(obj[key], prefix + '\t')
-
 class SparkJob:
-	def __init__(self, local = False):
+	def __init__(self, is_local = False):
 		self.name = "SparkJob"
 		self.is_local = is_local
 		self.input = "s3n://commoncrawl/crawl-data/CC-MAIN-2018-09/wat.paths.gz"
-		self.malicious_url_bucket = malicious_url_bucket
-		self.malicious_url_key = malicious_url_key
-		self.benign_urls_key = benign_urls_key
 		self.choose_url_prob = .00074
+
+	def set_aws_bucket(self, aws_bucket):
+		self.aws_bucket = aws_bucket
+	def set_malicious_url_key(self, malicious_url_key):
+		self.malicious_url_key = malicious_url_key
+	def set_benign_urls_key(self, benign_urls_key):
+		self.benign_urls_key = benign_urls_key
+	def set_local_benign_urls_path(self, path):
+		self.local_benign_urls_path = path
+	def set_local_malicious_urls_path(self, path):
+		self.local_malicious_urls_path = path
+
 	def run(self):
 		start_time = time.time()
 		# conf = SparkConf().set("master", "local[2]").set("spark.executor.instances", "2")
 		sc = SparkContext(
 			conf=SparkConf()
 		)
-		malicious_urls = read_malicious_url_data(self.malicious_url_bucket, self.malicious_url_key, self.is_local)
+		malicious_urls = read_malicious_url_data()
 		temp1, temp2 = NamedTemporaryFile(mode='w+b'), NamedTemporaryFile()
 		path=self.input.split("s3n://commoncrawl/")[-1]
 		s3Client = boto3.client('s3')
@@ -70,7 +60,7 @@ class SparkJob:
 		records = input_data.map(self.process_path_file).collect()
 		print "Here"
 		recs = [rec for row in records for rec in row]
-		self.write_urls(recs, self.malicious_url_bucket, self.malicious_url_key)
+		self.write_urls(recs)
 		print "Done"
 	def get_header_data(self, warc_rec):
 		header_data = {}
@@ -101,31 +91,31 @@ class SparkJob:
 		pass
 	def is_json_wat_rec(self, record):
 		return record.content_type == 'application/json' and record.rec_type == 'metadata'
-	def write_urls(self, urls, s3_bucket, s3_path):
+	def write_urls(self, urls):
 		s3Client = boto3.client('s3')
 		tempFile = NamedTemporaryFile()
 		with open(tempFile.name, "wb") as f:
 			for url in urls:
 				f.write(url + '\n')
 		with open(tempFile.name, "r") as f:
-			s3Client.upload_fileobj(f, s3_bucket, "urls")
-	def read_benign_urls(self, s3_bucket, s3_path, is_local=False):
-		if is_local:
-			with open("/Users/piercecunneen/urls.txt", "r") as f:
+			s3Client.upload_fileobj(f, self.aws_bucket, self.malicious_url_key)
+	def read_benign_urls(self):
+		if self.is_local:
+			with open(self.local_benign_urls_path, "r") as f:
 				return f.read().split('\n')[:-1]
 		temp = NamedTemporaryFile(mode='w+b')
 		client = boto3.client('s3')
-		client.download_fileobj(s3_bucket, s3_path, temp)
+		client.download_fileobj(self.aws_bucket, self.malicious_url_key, temp)
 		temp.seek(0)
 		with open(temp.name, "r") as f:
 			return f.read().split('\n')[:-1]
-	def read_malicious_urls(self, s3_bucket, s3_path, is_local=False):
-		if is_local:
-			with open("/Users/piercecunneen/ML/malicious_urls.txt", "r") as f:
+	def read_malicious_urls(self):
+		if self.is_local:
+			with open(self.local_malicious_urls_path, "r") as f:
 				return f.read().split('\n')[:-1]
 		temp = NamedTemporaryFile(mode='w+b')
 		client = boto3.client('s3')
-		client.download_fileobj(s3_bucket, s3_path, temp)
+		client.download_fileobj(self.aws_bucket, s3_path, temp)
 		temp.seek(0)
 		with open(temp.name, "r") as f:
 			return f.read().split('\n')[:-1]
@@ -135,8 +125,8 @@ class SparkJob:
 			feature_list.append(features.create_features(url))
 		return feature_list
 	def train(self):
-		urls = {url:{'class': 0} for url in job.read_benign_urls(self.malicious_url_bucket, self.benign_urls_key, self.is_local)}
-		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls(self.malicious_url_bucket, self.benign_urls_key, self.is_local)}
+		urls = {url:{'class': 0} for url in job.read_benign_urls()}
+		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls()}
 		all_urls = urls.copy()
 		all_urls.update(malicious_urls)
 		url_features = job.generate_features(all_urls)
@@ -144,6 +134,28 @@ class SparkJob:
 			url = f_set[1][0]
 			all_urls[url]['features'] = f_set[1][1:]
 		decision_tree.create_tree(all_urls)
+
+	def read_malicious_url_data(self):
+		start_t_malicious_url = time.time()
+		if self.is_local:
+			with open(self.local_malicious_urls_path, "r") as f:
+				return json.loads(f.read())
+		else:
+			temp = NamedTemporaryFile(mode='w+b')
+			client = boto3.client('s3')
+			client.download_fileobj(self.aws_bucket, self.malicious_url_bucket, temp)
+			temp.seek(0)
+			with gzip.open(temp.name, "r") as f:
+				return json.loads(f.read())
+
+def print_format(obj, prefix):
+	for key in obj:
+		print "{}{}:".format(prefix, key)
+		if type(obj[key]) == dict:
+			print_format(obj[key], prefix + '\t')
+
+
+
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	# parser.add_argument('awsAccessKeyID', type=str, help='The aws access key for the user')
@@ -160,7 +172,15 @@ if __name__ == "__main__":
 		(not args.local and not (args.awsBucket and args.awsMaliciousUrlKey and args.awsBenignUrlKey)):
 		parser.print_help()
 		sys.exit(1)
-	job = SparkJob(args.awsBucket, args.awsMaliciousUrlKey, args.awsBenignUrlKey, True)
+	job = SparkJob(args.local)
+	print args.local
+	if args.local:
+		job.set_local_malicious_urls_path(args.localMaliciousUrlPath)
+		job.set_local_benign_urls_path(args.localBenignUrlPath)
+	else:
+		job.set_aws_bucket(args.awsBucket)
+		job.set_malicious_url_key(args.awsMaliciousUrlKey)
+		job.set_benign_urls_key(args.awsBenignUrlKey)
 	job.train()
 
 
