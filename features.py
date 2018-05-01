@@ -90,11 +90,3 @@ def create_features(url):
             '# of case changes in query',
             '# of non alphanumeric characters'
         ], features
-
-if __name__ == "__main__":
-    urls = dict()
-    with open("verified_online.json", "r") as f:
-        urls = json.load(f)
-    # print(len(urls))
-    u = urls[0]["url"]
-    print(create_features(u))
