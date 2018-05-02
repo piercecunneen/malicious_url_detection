@@ -1,3 +1,4 @@
+from decision_tree import create_ten_folds
 import random
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
@@ -34,16 +35,3 @@ def create_network(url_dict):
         f_score_sum += f_measure
     print "Total Accuracy: ", accuracy_sum / len(sub_samples)
     print "F measure: ", f_score_sum / len(sub_samples)
-
-def create_ten_folds(data):
-    features = data[0]
-    classes = data[1]
-    sub_sample_size = len(features) / 10
-    sub_samples = list()
-    for i in range(10):
-        start = sub_sample_size*i
-        end = sub_sample_size*(i+1)
-        if i == 9:
-            end = len(features)
-        sub_samples.append((features[start:end], classes[start:end]))
-    return sub_samples

@@ -12,7 +12,7 @@ def create_tree(url_dict):
   feature_class_data = list(zip(features, classes))
   random.shuffle(feature_class_data)
   shuffled_features, shuffled_classes = zip(*feature_class_data)
-  sub_samples = create_10_cross_subsamples([shuffled_features, shuffled_classes])
+  sub_samples = create_ten_folds([shuffled_features, shuffled_classes])
   accuracy_sum = 0.0
   f_score_sum = 0.0
   for i in range(len(sub_samples)):
@@ -34,7 +34,7 @@ def create_tree(url_dict):
   print "Total accuracy: ", accuracy_sum / len(sub_samples)
   print "F measure: ", f_score_sum / len(sub_samples)
 
-def create_10_cross_subsamples(data):
+def create_ten_folds(data):
   features = data[0]
   classes = data[1]
   sub_sample_size = len(features) / 10
