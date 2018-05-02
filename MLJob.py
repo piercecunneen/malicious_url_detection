@@ -14,7 +14,7 @@ from urlparse import  urlparse
 from warcio.archiveiterator import ArchiveIterator
 
 from sklearn.neural_network import MLPClassifier
-from sklearn import tree
+from sklearn import tree, naive_bayes
 
 class MLJob:
 	def __init__(self, is_local = False):
@@ -147,6 +147,11 @@ class MLJob:
 			self.urls = self.generate_urls()
 		create_classifier(self.urls, MLPClassifier())
 
+	def train_naive_bayes(self):
+		if not self.urls:
+			self.urls = self.generate_urls()
+		create_classifier(self.urls, naive_bayes.MultinomialNB())
+
 	def read_malicious_url_data(self):
 		start_t_malicious_url = time.time()
 		if self.is_local:
@@ -194,6 +199,7 @@ if __name__ == "__main__":
 		job.set_benign_urls_key(args.awsBenignUrlKey)
 	job.train_decision_tree()
 	job.train_neural_network()
+	job.train_naive_bayes()
 
 
 
