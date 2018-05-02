@@ -1,6 +1,7 @@
 import argparse
 import boto3
 import decision_tree
+import neural_network
 import features
 import gzip
 import json
@@ -37,7 +38,7 @@ class SparkJob:
 		sc = SparkContext(
 			conf=SparkConf()
 		)
-		malicious_urls = read_malicious_url_data()
+		malicious_urls = self.read_malicious_url_data()
 		temp1, temp2 = NamedTemporaryFile(mode='w+b'), NamedTemporaryFile()
 		path=self.input.split("s3n://commoncrawl/")[-1]
 		s3Client = boto3.client('s3')
@@ -124,7 +125,7 @@ class SparkJob:
 		for url in urls:
 			feature_list.append(features.create_features(url))
 		return feature_list
-	def train(self):
+	def train_decision_tree(self):
 		urls = {url:{'class': 0} for url in job.read_benign_urls()}
 		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls()}
 		all_urls = urls.copy()
@@ -134,6 +135,17 @@ class SparkJob:
 			url = f_set[1][0]
 			all_urls[url]['features'] = f_set[1][1:]
 		decision_tree.create_tree(all_urls)
+
+	def train_neural_network(self):
+		urls = {url:{'class':0} for url in job.read_benign_urls()}
+		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls()}
+		all_urls = urls.copy()
+		all_urls.update(malicious_urls)
+		url_features = job.generate_features(all_urls)
+		for f_set in url_features:
+			url = f_set[1][0]
+			all_urls[url]['features'] = f_set[1][1:]
+		neural_network.create_network(all_urls)
 
 	def read_malicious_url_data(self):
 		start_t_malicious_url = time.time()
@@ -181,7 +193,8 @@ if __name__ == "__main__":
 		job.set_aws_bucket(args.awsBucket)
 		job.set_malicious_url_key(args.awsMaliciousUrlKey)
 		job.set_benign_urls_key(args.awsBenignUrlKey)
-	job.train()
+	job.train_decision_tree()
+	job.train_neural_network()
 
 
 
