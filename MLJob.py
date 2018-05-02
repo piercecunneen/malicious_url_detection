@@ -1,7 +1,6 @@
 import argparse
 import boto3
-import decision_tree
-import neural_network
+from classifier import create_classifier
 import features
 import gzip
 import json
@@ -14,12 +13,15 @@ import time
 from urlparse import  urlparse
 from warcio.archiveiterator import ArchiveIterator
 
-class SparkJob:
+from sklearn.neural_network import MLPClassifier
+from sklearn import tree
+
+class MLJob:
 	def __init__(self, is_local = False):
-		self.name = "SparkJob"
 		self.is_local = is_local
 		self.input = "s3n://commoncrawl/crawl-data/CC-MAIN-2018-09/wat.paths.gz"
 		self.choose_url_prob = .00074
+		self.urls = None
 
 	def set_aws_bucket(self, aws_bucket):
 		self.aws_bucket = aws_bucket
@@ -125,7 +127,7 @@ class SparkJob:
 		for url in urls:
 			feature_list.append(features.create_features(url))
 		return feature_list
-	def train_decision_tree(self):
+	def generate_urls(self):
 		urls = {url:{'class': 0} for url in job.read_benign_urls()}
 		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls()}
 		all_urls = urls.copy()
@@ -134,18 +136,16 @@ class SparkJob:
 		for f_set in url_features:
 			url = f_set[1][0]
 			all_urls[url]['features'] = f_set[1][1:]
-		decision_tree.create_tree(all_urls)
+		return all_urls
+	def train_decision_tree(self):
+		if not self.urls:
+			self.urls = self.generate_urls()
+		create_classifier(self.urls, tree.DecisionTreeClassifier())
 
 	def train_neural_network(self):
-		urls = {url:{'class':0} for url in job.read_benign_urls()}
-		malicious_urls = {url:{'class': 1} for url in job.read_malicious_urls()}
-		all_urls = urls.copy()
-		all_urls.update(malicious_urls)
-		url_features = job.generate_features(all_urls)
-		for f_set in url_features:
-			url = f_set[1][0]
-			all_urls[url]['features'] = f_set[1][1:]
-		neural_network.create_network(all_urls)
+		if not self.urls:
+			self.urls = self.generate_urls()
+		create_classifier(self.urls, MLPClassifier())
 
 	def read_malicious_url_data(self):
 		start_t_malicious_url = time.time()
@@ -184,8 +184,7 @@ if __name__ == "__main__":
 		(not args.local and not (args.awsBucket and args.awsMaliciousUrlKey and args.awsBenignUrlKey)):
 		parser.print_help()
 		sys.exit(1)
-	job = SparkJob(args.local)
-	print args.local
+	job = MLJob(args.local)
 	if args.local:
 		job.set_local_malicious_urls_path(args.localMaliciousUrlPath)
 		job.set_local_benign_urls_path(args.localBenignUrlPath)

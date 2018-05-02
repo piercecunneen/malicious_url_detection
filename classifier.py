@@ -3,7 +3,8 @@ from sklearn import tree
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_curve, f1_score
 from matplotlib import pyplot as plt
-def create_tree(url_dict):
+
+def create_classifier(url_dict, classifier):
   features = []
   classes = []
   for url in url_dict:
@@ -24,9 +25,8 @@ def create_tree(url_dict):
 
     X_test = [x for x in sub_samples[i][0]]
     Y_test = [x for x in sub_samples[i][1]]
-    clf = tree.DecisionTreeClassifier()
-    clf = clf.fit(X_train, Y_train)
-    predicted_vals = clf.predict(X_test)
+    classifier = classifier.fit(X_train, Y_train)
+    predicted_vals = classifier.predict(X_test)
     accuracy = accuracy_score(Y_test, predicted_vals)
     f_measure = f1_score(Y_test, predicted_vals)
     accuracy_sum += accuracy
