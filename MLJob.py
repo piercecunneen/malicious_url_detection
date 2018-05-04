@@ -175,8 +175,6 @@ def print_format(obj, prefix):
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
-	# parser.add_argument('awsAccessKeyID', type=str, help='The aws access key for the user')
-	# parser.add_argument('awsSecretAccessKey', type=str, help='The aws secret key for the user')
 	parser.add_argument("-awsBucket", action="store", type=str, help="The aws bucket containing the malicious and non malicious urls")
 	parser.add_argument("-awsMaliciousUrlKey", action="store", type=str, help="The aws key for the malicious url file")
 	parser.add_argument("-awsBenignUrlKey", action="store", type=str, help="The aws key for the non malicious url file")

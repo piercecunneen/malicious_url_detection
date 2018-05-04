@@ -9,6 +9,7 @@ non-alphanumeric count in host
 '''
 
 import json
+import string
 from urlparse import urlparse
 
 def count_case_changes(s):
@@ -45,6 +46,15 @@ def get_counts(s):
         s.count('?'),
         s.count('-')
     ]
+def get_vowel_to_consonent_ratio(s):
+    num_vowels = 0.0
+    num_consonent = 0.0
+    for c in s.lower():
+        if c in ('a', 'e', 'i', 'o', 'u'):
+            num_vowels += 1
+        elif c in (string.ascii_lowercase):
+            num_consonent += 1
+    return num_vowels / num_consonent
 
 def create_features(url):
     o = urlparse(url)
